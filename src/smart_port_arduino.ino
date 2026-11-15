@@ -219,6 +219,14 @@ static inline void process_button_bit(volatile uint8_t *sp_byte, uint8_t sp_bit,
   }
 }
 
+/// @brief Resets and starts Timer 2 for a 0.1 second countdown.
+static inline void start_post_release_timer()
+{
+  TCCR2B = 0; // Pause timer before resetting counter
+  TCNT2 = 0;
+  TCCR2B = (1 << CS22) | (1 << CS21) | (1 << CS20); // 1024 prescaler (~0.1s with OCR2A = 156)
+}
+
 /// @brief Process data in completed serial_rx_bytes[].
 /// @return void
 static inline void serial_process_rx_data()
@@ -261,8 +269,8 @@ static inline void serial_process_rx_data()
               dpi_upper[dpi_index] = 0x00;
               dpi_lower[dpi_index] = 0x00;
             }
-            TCCR2B |= (1 << CS22) | (1 << CS21); // Run the post-release timer (needed to let values propagate before disabling control).
-            break;                               // Exit the byte_count for loop after releasing that user ID.
+            start_post_release_timer(); // Run the post-release timer (needed to let values propagate before disabling control).
+            break;                      // Exit the byte_count for loop after releasing that user ID.
           }
           else if (serial_rx_bytes[byte_count] == user_ids[controller_index]) // User ID found...
           {
@@ -617,7 +625,7 @@ ISR(SPI_STC_vect)
           controller_enable[i] = false;
           controller_enable_bitmask |= (0b00000001 << bitwise_index); // May Be Broken
 
-          // TCCR2B |= (1 << CS22) | (1 << CS21); // Run the post-release timer.
+          // start_post_release_timer();  // Run the post-release timer.
         }
       }
       else // If it is not plugged in...
@@ -630,7 +638,7 @@ ISR(SPI_STC_vect)
 
           clear_sp_bits(bitwise_index);
 
-          TCCR2B |= (1 << CS22) | (1 << CS21); // Run the post-release timer.
+          start_post_release_timer(); // Run the post-release timer.
         }
       }
     }
