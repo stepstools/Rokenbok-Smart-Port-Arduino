@@ -173,6 +173,10 @@ volatile SeriesState spi_fsm_state = STATE_IDLE;
 uint8_t serial_rx_bytes[128];
 uint8_t serial_rx_index = 0;
 
+// Post Release Timer Tracking Variables
+uint32_t post_release_timer_start = 0;
+uint8_t post_release_timer_active = false;
+
 //   _    _ ______ _      _____  ______ _____    //
 //  | |  | |  ____| |    |  __ \|  ____|  __ \   //
 //  | |__| | |__  | |    | |__) | |__  | |__) |  //
@@ -219,12 +223,11 @@ static inline void process_button_bit(volatile uint8_t *sp_byte, uint8_t sp_bit,
   }
 }
 
-/// @brief Resets and starts Timer 2 for a 0.1 second countdown.
+/// @brief Triggers or re-triggers the non-blocking post-release timer (0.1 seconds).
 static inline void start_post_release_timer()
 {
-  TCCR2B = 0; // Pause timer before resetting counter
-  TCNT2 = 0;
-  TCCR2B = (1 << CS22) | (1 << CS21) | (1 << CS20); // 1024 prescaler (~0.1s with OCR2A = 156)
+  post_release_timer_start = millis();
+  post_release_timer_active = true;
 }
 
 /// @brief Process data in completed serial_rx_bytes[].
@@ -433,13 +436,6 @@ void setup(void)
   TCCR1B = (1 << CS12);   // 256 Prescaler
   TIMSK1 |= (1 << TOIE1); // Enable Timer Overflow Interrupt
 
-  // Configure Timer 2
-  TCNT2 = 0;
-  TCCR2A = (1 << WGM21);   // Set CTC mode (clear timer on compare match)
-  TCCR2B = 0;              // Stop Timer
-  OCR2A = 156;             // Compare match register for 0.1 seconds (for 16 MHz clock, prescaler 1024)
-  TIMSK2 |= (1 << OCIE2A); // Enable Timer 2 compare interrupt
-
   // Enable Global Interrupts
   sei();
 
@@ -451,6 +447,23 @@ void setup(void)
 /// @return void
 void loop(void)
 {
+  // Handle non-blocking post-release timer cleanup (~0.1 seconds delay)
+  if (post_release_timer_active && (millis() - post_release_timer_start >= 100))
+  {
+    post_release_timer_active = false;
+    for (uint8_t i = 0; i < 12; i++) // Search through all 12 controllers for unused controllers and ensure they are disabled.
+    {
+      if (user_ids[i] == 0)
+      {
+        controller_enable[i] = false;
+        if (i < 8) // Only For Virtual and Physical Controllers
+        {
+          controller_enable_bitmask |= (0b00000001 << ((i + 4) & 7)); // controller_enable_bitmask |= (0b00000001 << ((i + 4) % 8));
+        }
+      }
+    }
+  }
+
   if (Serial.available() > 0)
   {
     uint8_t serial_read_byte = Serial.read();
@@ -470,6 +483,7 @@ void loop(void)
       serial_rx_bytes[serial_rx_index] = 255;
       serial_process_rx_data();
       serial_tx_status();
+      serial_rx_index = 0;
     }
     else if (serial_rx_index < 127)
     {
@@ -727,7 +741,7 @@ ISR(SPI_STC_vect)
     send_byte = NULL_CMD;
     break;
 
-  // STATE MACHIE EDIT SELECT STATES
+  // STATE MACHINE EDIT SELECT STATES
   case STATE_EDIT_SELECT_1: // Receive: P1 Select // Send: P1 Select
     spi_fsm_state = STATE_EDIT_SELECT_2;
     if (controller_enable[4])
@@ -891,24 +905,5 @@ ISR(TIMER1_OVF_vect)
     SET_SS_LOW();
 
     SET_SLAVE_READY();
-  }
-}
-
-/// @brief ISR triggers 0.1 seconds after a controller was released to do some cleanup.
-/// @param TIMER2_COMPA_vect Timer 1 Compare Vector
-/// @return N/A
-ISR(TIMER2_COMPA_vect)
-{
-  TCCR2B = 0;                      // Stop Timer 2
-  for (uint8_t i = 0; i < 12; i++) // Search through all 12 controllers for unused controllers and ensure they are disabled.
-  {
-    if (user_ids[i] == 0)
-    {
-      controller_enable[i] = false;
-      if (i < 8) // Only For Virtual and Physical Controllers
-      {
-        controller_enable_bitmask |= (0b00000001 << ((i + 4) & 7)); // controller_enable_bitmask |= (0b00000001 << ((i + 4) % 8));
-      }
-    }
   }
 }
