@@ -1,6 +1,9 @@
 /* SMART PORT ARDUINO DEMO CODE
+ * VERSION: 1.0
+ * DATE: 15 NOV 2026
  * AUTHOR: STEPSTOOLS
- * DATE: 4 FEB 2026
+ * REPO: https://github.com/stepstools/Rokenbok-Smart-Port-Arduino
+ * MULTIROK REPO: https://github.com/csev1755/MultiRok
  * ROKENBOK DISCORD: https://discord.gg/pmbbAsq
  */
 
@@ -224,6 +227,7 @@ static inline void serial_process_rx_data()
   {
     share_mode = serial_rx_bytes[1] ? 1 : 0;
     is16sel_mode = serial_rx_bytes[2] ? 1 : 0;
+    // Bytes 3 and 4 are Unused By the Arduino
   }
   else if (serial_rx_bytes[0] == 254) // Process Player Bytes
   {
@@ -249,7 +253,6 @@ static inline void serial_process_rx_data()
             if (controller_index < 8) // Virtual or Physical Controllers
             {
               uint8_t bitwise_index = (controller_index + 4) & 7; // uint8_t bitwise_index = (controller_index + 4) % 8; // Convert V1-4, P1-4 Array Index to V4|V3|V2|V1|P4|P3|P2|P1 Bitwise
-
               clear_sp_bits(bitwise_index);
             }
             else if (controller_index < 12) // Direct Packet Injection Controllers
@@ -796,7 +799,7 @@ ISR(SPI_STC_vect)
 
   case STATE_EDIT_SELECT_10: // Receive: EDIT_END // Send: SLAVE_WANT_INS
     spi_fsm_state = STATE_IDLE;
-    send_byte = SLAVE_WANT_INS; // Ready to Insert Packet // TODO: I think you could send a NULL_CMD here.
+    send_byte = SLAVE_WANT_INS; // Ready to Insert Packet
     break;
 
   // STATE MACHINE PKT INJECT STATE
