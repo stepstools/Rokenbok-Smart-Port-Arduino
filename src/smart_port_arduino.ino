@@ -172,6 +172,7 @@ volatile SeriesState spi_fsm_state = STATE_IDLE;
 // Array for Received Serial Bytes
 uint8_t serial_rx_bytes[128];
 uint8_t serial_rx_index = 0;
+uint8_t serial_packet_started = false;
 
 // Post Release Timer Tracking Variables
 uint32_t post_release_timer_start = 0;
@@ -472,22 +473,37 @@ void loop(void)
     {
       serial_rx_bytes[0] = 253;
       serial_rx_index = 1;
+      serial_packet_started = true;
     }
     else if (serial_read_byte == 254) // Start Player Bytes
     {
       serial_rx_bytes[0] = 254;
       serial_rx_index = 1;
+      serial_packet_started = true;
     }
     else if (serial_read_byte == 255) // End Bytes
     {
-      serial_rx_bytes[serial_rx_index] = 255;
-      serial_process_rx_data();
-      serial_tx_status();
+      if (serial_packet_started)
+      {
+        serial_rx_bytes[serial_rx_index] = 255;
+        serial_process_rx_data();
+        serial_tx_status();
+      }
       serial_rx_index = 0;
+      serial_packet_started = false;
     }
     else if (serial_rx_index < 127)
     {
-      serial_rx_bytes[serial_rx_index++] = serial_read_byte;
+      if (serial_packet_started)
+      {
+        serial_rx_bytes[serial_rx_index] = serial_read_byte;
+        serial_rx_index++;
+      }
+    }
+    else
+    {
+      serial_rx_index = 0;
+      serial_packet_started = false;
     }
   }
 }
